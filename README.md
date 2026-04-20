@@ -245,7 +245,7 @@ These passwords are for demo purposes only.
 ### 1. Clone the repository
 
 ```bash
-git clone [<your-repository-url>](https://github.com/Akash-8004/Role-based_RAGchatbot)
+git clone https://github.com/Akash-8004/Role-based_RAGchatbot.git
 cd Role-based_RAGchatbot
 ```
 
