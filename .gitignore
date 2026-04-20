@@ -1,0 +1,43 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime logs and temporary files
+.logs/
+logs/
+*.log
+*.tmp
+*.temp
+
+# Streamlit local config/cache
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Generated vector database
+resources/vectorstore/
+
+# Local-only env variants.
+# Keep .env tracked only after replacing real API keys with placeholders.
+.env.local
+.env.*.local
