@@ -195,6 +195,10 @@ if "profile" not in st.session_state:
     st.session_state.profile = None
 if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
+if "selected_demo_username" not in st.session_state:
+    st.session_state.selected_demo_username = None
+if "password_value" not in st.session_state:
+    st.session_state.password_value = ""
 
 st.markdown(
     """
@@ -224,11 +228,13 @@ with st.sidebar:
         }
         selected_label = st.selectbox("Demo user", list(user_labels))
         username = user_labels[selected_label]
-        password_options = [DEMO_PASSWORDS.get(username, "")]
-        password = st.selectbox("Password", password_options)
+        if st.session_state.selected_demo_username != username:
+            st.session_state.selected_demo_username = username
+            st.session_state.password_value = DEMO_PASSWORDS.get(username, "")
+        password = st.text_input("Password", type="password", key="password_value")
     else:
         username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        password = st.text_input("Password", type="password", key="password_value")
 
     sign_in, clear_chat = st.columns(2)
     with sign_in:
@@ -273,6 +279,13 @@ with st.sidebar:
             st.caption(f"LLM: {health['generation_model']}")
         except Exception:
             st.caption("RAG index status unavailable.")
+
+        if st.button("Log out", use_container_width=True):
+            st.session_state.token = None
+            st.session_state.profile = None
+            st.session_state.messages = []
+            st.session_state.pending_prompt = None
+            st.rerun()
 
 if not st.session_state.token:
     left, right = st.columns([1.2, 1])
