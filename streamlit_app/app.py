@@ -201,7 +201,6 @@ st.markdown(
 
 with st.sidebar:
     st.header("Access")
-    st.caption(f"Backend API: {API_BASE_URL}")
     st.markdown(f"[Source code]({SOURCE_CODE_URL})")
 
     try:
