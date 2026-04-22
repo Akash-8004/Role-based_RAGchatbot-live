@@ -36,6 +36,6 @@ services:
       - key: CHROMA_COLLECTION
         value: company_documents_hf
       - key: HF_EMBEDDING_MODEL
-        value: sentence-transformers/all-mpnet-base-v2
+        value: BAAI/bge-large-en-v1.5
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
