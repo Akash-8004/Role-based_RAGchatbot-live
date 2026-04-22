@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/resources/vectorstore
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    build: .
+    command: streamlit run streamlit_app/app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true
+    environment:
+      API_BASE_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+
+volumes:
+  chroma_data:

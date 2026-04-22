@@ -34,10 +34,12 @@ logs/
 .streamlit/secrets.toml
 .streamlit/config.toml
 
+# Environment secrets
+.env
+
 # Generated vector database
 resources/vectorstore/
 
 # Local-only env variants.
-# Keep .env tracked only after replacing real API keys with placeholders.
 .env.local
 .env.*.local

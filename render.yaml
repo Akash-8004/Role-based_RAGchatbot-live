@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: role-based-ragchatbot
+    env: docker
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: SECRET_KEY
+        sync: false
+      - key: HUGGINGFACEHUB_API_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: VECTOR_STORE_PROVIDER
+        value: pinecone
+      - key: PINECONE_INDEX_NAME
+        value: role-based-ragchatbot
+      - key: PINECONE_NAMESPACE
+        value: company-docs
+      - key: PINECONE_CLOUD
+        value: aws
+      - key: PINECONE_REGION
+        value: us-east-1
+      - key: PINECONE_DIMENSION
+        value: "1024"
+      - key: PINECONE_METRIC
+        value: cosine
+      - key: TOKEN_EXPIRE_MINUTES
+        value: "120"
+      - key: RAG_TOP_K
+        value: "4"
+      - key: RAG_MIN_RELEVANCE_SCORE
+        value: "0.2"
+      - key: CHROMA_COLLECTION
+        value: company_documents_hf
+      - key: HF_EMBEDDING_MODEL
+        value: sentence-transformers/all-mpnet-base-v2
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile

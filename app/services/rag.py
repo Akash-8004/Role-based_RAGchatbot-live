@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from pinecone import Pinecone, ServerlessSpec
 
 from app.core.config import get_settings
 from app.core.rbac import allowed_roles_for_department
@@ -131,6 +134,75 @@ def _get_vector_store() -> Chroma:
     )
 
 
+def _get_pinecone_client() -> Pinecone:
+    settings = get_settings()
+    if not settings.pinecone_api_key:
+        raise RAGConfigurationError(
+            "PINECONE_API_KEY is missing. Add it to your .env or deployment environment."
+        )
+    return Pinecone(api_key=settings.pinecone_api_key)
+
+
+def _pinecone_status_ready(description: object) -> bool:
+    status = getattr(description, "status", None)
+    if isinstance(status, dict):
+        return bool(status.get("ready"))
+    return bool(getattr(status, "ready", False))
+
+
+def _ensure_pinecone_index() -> None:
+    settings = get_settings()
+    client = _get_pinecone_client()
+    if not client.has_index(settings.pinecone_index_name):
+        client.create_index(
+            name=settings.pinecone_index_name,
+            dimension=settings.pinecone_dimension,
+            metric=settings.pinecone_metric,
+            spec=ServerlessSpec(
+                cloud=settings.pinecone_cloud,
+                region=settings.pinecone_region,
+            ),
+            deletion_protection="disabled",
+        )
+
+    for _ in range(30):
+        description = client.describe_index(settings.pinecone_index_name)
+        if _pinecone_status_ready(description):
+            return
+        time.sleep(2)
+
+    raise RAGConfigurationError(
+        f"Pinecone index '{settings.pinecone_index_name}' was not ready in time."
+    )
+
+
+def _get_pinecone_index():
+    settings = get_settings()
+    _ensure_pinecone_index()
+    return _get_pinecone_client().Index(settings.pinecone_index_name)
+
+
+def _get_pinecone_vector_store() -> PineconeVectorStore:
+    settings = get_settings()
+    namespace = settings.pinecone_namespace or None
+    return PineconeVectorStore(
+        index=_get_pinecone_index(),
+        embedding=_get_embeddings(),
+        namespace=namespace,
+    )
+
+
+def _get_configured_vector_store() -> Chroma | PineconeVectorStore:
+    provider = get_settings().vector_store_provider
+    if provider == "chroma":
+        return _get_vector_store()
+    if provider == "pinecone":
+        return _get_pinecone_vector_store()
+    raise RAGConfigurationError(
+        "VECTOR_STORE_PROVIDER must be either 'chroma' or 'pinecone'."
+    )
+
+
 def _chunk_to_document(chunk: DocumentChunk) -> Document:
     return Document(
         page_content=chunk.text,
@@ -146,39 +218,92 @@ def _chunk_to_document(chunk: DocumentChunk) -> Document:
 
 def rebuild_vector_store() -> dict[str, int | str]:
     settings = get_settings()
-    settings.vector_store_dir.mkdir(parents=True, exist_ok=True)
     embeddings = _get_embeddings()
-    old_store = Chroma(
-        collection_name=settings.chroma_collection,
-        embedding_function=embeddings,
-        persist_directory=str(settings.vector_store_dir),
-    )
-    try:
-        old_store.delete_collection()
-    except Exception:
-        pass
-
     chunks = load_source_chunks()
     documents = [_chunk_to_document(chunk) for chunk in chunks]
     ids = [chunk.id for chunk in chunks]
-    Chroma.from_documents(
-        documents=documents,
-        embedding=embeddings,
-        ids=ids,
-        collection_name=settings.chroma_collection,
-        persist_directory=str(settings.vector_store_dir),
-    )
+
+    if settings.vector_store_provider == "chroma":
+        settings.vector_store_dir.mkdir(parents=True, exist_ok=True)
+        old_store = Chroma(
+            collection_name=settings.chroma_collection,
+            embedding_function=embeddings,
+            persist_directory=str(settings.vector_store_dir),
+        )
+        try:
+            old_store.delete_collection()
+        except Exception:
+            pass
+
+        Chroma.from_documents(
+            documents=documents,
+            embedding=embeddings,
+            ids=ids,
+            collection_name=settings.chroma_collection,
+            persist_directory=str(settings.vector_store_dir),
+        )
+        vector_store_location = str(settings.vector_store_dir)
+        collection = settings.chroma_collection
+    elif settings.vector_store_provider == "pinecone":
+        index = _get_pinecone_index()
+        namespace = settings.pinecone_namespace or None
+        delete_kwargs = {"delete_all": True}
+        if namespace:
+            delete_kwargs["namespace"] = namespace
+        try:
+            index.delete(**delete_kwargs)
+        except Exception:
+            pass
+        vector_store = PineconeVectorStore(
+            index=index,
+            embedding=embeddings,
+            namespace=namespace,
+        )
+        vector_store.add_documents(documents=documents, ids=ids)
+        vector_store_location = f"pinecone://{settings.pinecone_index_name}"
+        collection = settings.pinecone_namespace or "default"
+    else:
+        raise RAGConfigurationError(
+            "VECTOR_STORE_PROVIDER must be either 'chroma' or 'pinecone'."
+        )
 
     return {
         "status": "indexed",
         "chunks_indexed": len(chunks),
-        "collection": settings.chroma_collection,
-        "vector_store": str(settings.vector_store_dir),
+        "collection": collection,
+        "vector_store": vector_store_location,
     }
 
 
+def _pinecone_vector_count() -> int:
+    settings = get_settings()
+    index = _get_pinecone_index()
+    stats = index.describe_index_stats()
+    namespace = settings.pinecone_namespace
+    if not namespace:
+        total = getattr(stats, "total_vector_count", 0)
+        if isinstance(stats, dict):
+            total = stats.get("total_vector_count", 0)
+        return int(total or 0)
+
+    namespaces = getattr(stats, "namespaces", None)
+    if isinstance(stats, dict):
+        namespaces = stats.get("namespaces", {})
+    namespaces = namespaces or {}
+    namespace_stats = namespaces.get(namespace)
+    if not namespace_stats:
+        return 0
+    if isinstance(namespace_stats, dict):
+        return int(namespace_stats.get("vector_count", 0) or 0)
+    return int(getattr(namespace_stats, "vector_count", 0) or 0)
+
+
 def ensure_vector_store() -> int:
-    count = _get_vector_store()._collection.count()
+    settings = get_settings()
+    if settings.vector_store_provider == "pinecone":
+        count = _pinecone_vector_count()
+    else:
+        count = _get_vector_store()._collection.count()
     if count == 0:
         return int(rebuild_vector_store()["chunks_indexed"])
     return count
@@ -213,7 +338,7 @@ def search_documents(
     settings = get_settings()
     top_k = top_k or settings.top_k
     ensure_vector_store()
-    vector_store = _get_vector_store()
+    vector_store = _get_configured_vector_store()
     docs_with_scores = vector_store.similarity_search_with_relevance_scores(
         query=query,
         k=max(top_k, 1),
@@ -292,13 +417,25 @@ def generate_answer(query: str, results: list[SearchResult]) -> str:
 def rag_status() -> dict[str, int | str]:
     settings = get_settings()
     try:
-        count = _get_vector_store()._collection.count()
+        if settings.vector_store_provider == "pinecone":
+            count = _pinecone_vector_count()
+        else:
+            count = _get_vector_store()._collection.count()
     except Exception:
         count = 0
     return {
         "chunks_indexed": count,
-        "collection": settings.chroma_collection,
-        "vector_store": str(settings.vector_store_dir),
+        "collection": (
+            settings.pinecone_namespace
+            if settings.vector_store_provider == "pinecone"
+            else settings.chroma_collection
+        ),
+        "vector_store": (
+            f"pinecone://{settings.pinecone_index_name}"
+            if settings.vector_store_provider == "pinecone"
+            else str(settings.vector_store_dir)
+        ),
+        "vector_store_provider": settings.vector_store_provider,
         "embedding_provider": "huggingface-endpoint",
         "embedding_model": settings.hf_embedding_model,
         "generation_provider": "groq",
