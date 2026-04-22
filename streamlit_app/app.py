@@ -28,6 +28,15 @@ SAMPLE_PROMPTS = {
     "executive": "Compare Q4 revenue, marketing performance, HR, and engineering priorities.",
 }
 
+DEMO_PASSWORDS = {
+    "tony": "password123",
+    "bruce": "securepass",
+    "sam": "financepass",
+    "natasha": "hrpass123",
+    "steve": "employeepass",
+    "pepper": "executivepass",
+}
+
 
 def api_post(path: str, payload: dict, token: str | None = None) -> dict:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
@@ -201,7 +210,7 @@ st.markdown(
 
 with st.sidebar:
     st.header("Access")
-    st.markdown(f"[Source code]({SOURCE_CODE_URL})")
+    st.markdown(f"Source code: [{SOURCE_CODE_URL}]({SOURCE_CODE_URL})")
 
     try:
         demo_users = api_get("/demo-users")
@@ -215,10 +224,11 @@ with st.sidebar:
         }
         selected_label = st.selectbox("Demo user", list(user_labels))
         username = user_labels[selected_label]
+        password_options = [DEMO_PASSWORDS.get(username, "")]
+        password = st.selectbox("Password", password_options)
     else:
         username = st.text_input("Username")
-
-    password = st.text_input("Password", type="password")
+        password = st.text_input("Password", type="password")
 
     sign_in, clear_chat = st.columns(2)
     with sign_in:
