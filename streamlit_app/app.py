@@ -5,6 +5,10 @@ import streamlit as st
 
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+SOURCE_CODE_URL = os.getenv(
+    "SOURCE_CODE_URL",
+    "https://github.com/Akash-8004/Role-based_RAGchatbot",
+)
 
 ROLE_COLORS = {
     "engineering": "#2563eb",
@@ -197,7 +201,8 @@ st.markdown(
 
 with st.sidebar:
     st.header("Access")
-    st.caption(f"API: {API_BASE_URL}")
+    st.caption(f"Backend API: {API_BASE_URL}")
+    st.markdown(f"[Source code]({SOURCE_CODE_URL})")
 
     try:
         demo_users = api_get("/demo-users")
